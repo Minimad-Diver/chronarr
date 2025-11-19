@@ -34,9 +34,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Copy web starter file to root directory
-COPY start_web.py .
-
 # Create git metadata for version detection based on build arg
 RUN mkdir -p .git && \
     echo "ref: refs/heads/${GIT_BRANCH}" > .git/HEAD
@@ -50,9 +47,9 @@ RUN mkdir -p /app/emby-plugin && \
         echo "⚠️  Emby plugin DLL not found, skipping..."; \
     fi
 
-# Copy and setup entrypoint script
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Combined entrypoint: starts core + web
+COPY entrypoint_combined.sh /app/entrypoint_combined.sh
+RUN chmod +x /app/entrypoint_combined.sh
 
 # Create data directory for logs and ensure proper permissions
 RUN mkdir -p /app/data/logs && \
@@ -64,15 +61,14 @@ USER app
 # Declare volume mount point
 VOLUME ["/app/data"]
 
-# Health check
+# Health check – now point to the web service (8081) since that's what users hit
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:8081/health || exit 1
 
-# Expose port
-EXPOSE 8080
+# Expose both ports: core (8080) & web (8081)
+EXPOSE 8080 8081
 
 # Use tini as init process to handle signals and zombie processes properly
-ENTRYPOINT ["tini", "--", "/app/entrypoint.sh"]
+ENTRYPOINT ["tini", "--", "/app/entrypoint_combined.sh"]
 
-# Default command (can be overridden in docker-compose for chronarr-web)
-CMD ["python", "-u", "main.py"]
+# No CMD – the entrypoint starts both processes
